@@ -1,0 +1,109 @@
+trigger: none
+
+resources:
+  repositories:
+  - repository: appsectemplates
+    type: git
+    name: DevSecOps/DevSecOps
+    endpoint: CrossOrg-Devsecops-AFR Integration Microservices
+
+parameters:
+    - name: app
+      type: string
+      default: 'Asset-Verify-FE'
+
+    - name: dockerfile
+      type: string
+      default: 'Dockerfile'
+      
+    - name: devDockerRegistryServiceConnection
+      type: string
+      default: 'ACR-Dev'
+
+    - name: containerRegistry
+      type: string
+      default: 'microservicesacrafrdev.azurecr.io'
+
+    - name: imageRepository
+      type: string
+      default: 'assetverificationfe'
+
+    - name: docker_build_arguments
+      type: object
+      default: |
+        --build-arg REACT_APP_API_BASE_URL=="$(REACT_APP_API_BASE_URL=)"
+        --build-arg REACT_APP_STORAGE_ACCOUNT_NAME="$(REACT_APP_STORAGE_ACCOUNT_NAME)"
+        --build-arg REACT_APP_STORAGE_CONTAINER_NAME="$(REACT_APP_STORAGE_CONTAINER_NAME)"
+        --build-arg REACT_APP_STORAGE_ACCESS_KEY="$(REACT_APP_STORAGE_ACCESS_KEY)"
+        --build-arg REACT_APP_SAS_URL="$(REACT_APP_SAS_URL)"
+        --build-arg REACT_APP_SAS_TOKEN="$(REACT_APP_SAS_TOKEN)"
+
+variables:
+- name: 'vmImageName'
+  value: 'ubuntu-latest'
+
+- name: 'sonarExclusionPath'
+  value: $(Build.SourcesDirectory)/.azuredevops
+
+- name: projectName
+  value: 'AFR-Asset-Verification_FE'
+
+- name: 'sonarName'
+  value: 'sonarcloud-ado_afr-assetverification-fe'
+
+- name: 'checkmarxTeam'
+  value: '/CxServer/AB-InBev/AFR/DMS_BEES_Integration'
+
+
+stages:
+- stage: SCAN
+  displayName: SCAN stage
+  jobs:
+    - job: SCAN
+      displayName: scan
+      pool:
+        vmImage: 'ubuntu-latest'
+
+      steps:
+      - checkout: self
+      - checkout: appsectemplates
+
+      - template: pipeline_templates/Security_tasks/prepareSonarCloudPR.yml@appsectemplates
+        parameters:
+          SCServiceConnection: SonarcloudServer
+          SCProjectKey: $(sonarName) 
+          SCProjectName: $(sonarName) 
+        #   SCBranchName: '$(Build.SourceBranchName)'
+          SCBaseDirPath: '$(system.defaultworkingdirectory)'
+          
+          SCPrBaseBranch: '$(Build.SourceBranchName)'
+          SCPrBranch: $(Build.SourceBranchName) #sonar.pullrequest.branch.
+          SCPRKey: '$(system.pullRequest.pullRequestId)'
+          SCExclusion: '$(sonarExclusionPath)'
+
+      - task: Docker@2
+        displayName: Build
+        inputs:
+            command: build
+            repository: ${{parameters.imageRepository}}
+            dockerfile: '**/${{parameters.dockerfile}}'
+            containerRegistry: ${{parameters.devDockerRegistryServiceConnection}} #$(dockerRegistryServiceConnection)
+            arguments: |
+                ${{parameters.docker_build_arguments}}
+            tags: |
+                $(Build.BuildNumber)
+                latest
+
+      - template: pipeline_templates/secure_code_scan.yml@appsectemplates
+        parameters:
+          scanSonarCloud: true
+          sonarCloudGate: false
+          SCServiceConnection: SonarcloudServer
+          scanGitLeaks: true
+          scanCheckmarx: true
+          CxServiceConnection: CheckmarxServer
+          CxTeamName: $(checkmarxTeam)
+          scanSnyk: false
+          SkServiceConnection: 'SnykServer'
+          SkOrganization: '6faff7dd-4e52-4ac6-af3c-a5d1eaa27be2'
+          SkAdditionalArgs: '--all-projects --detection-depth=4'

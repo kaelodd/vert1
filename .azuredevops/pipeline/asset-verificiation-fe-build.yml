@@ -1,0 +1,149 @@
+trigger:
+  branches:
+    include:
+    - main
+    - QA
+    - DEV
+
+parameters:
+    - name: app
+      type: string
+      default: 'Asset-Verify-FE'
+
+    - name: dockerfile
+      type: string
+      default: 'Dockerfile'
+      
+    - name: devDockerRegistryServiceConnection
+      type: string
+      default: 'ACR-Dev'
+
+    - name: qaDockerRegistryServiceConnection
+      type: string
+      default: 'ACR-QA'
+      
+    - name: prodDockerRegistryServiceConnection
+      type: string
+      default: 'ACR-Prod'
+
+    - name: BuildAgentPoolNonProd
+      type: string
+      default: 'AFR_Non_Prod_Self_hosted_Pool'
+
+    - name: azureSubscription
+      type: string
+      default: 'AFR_Microservices_Azure_Non_Prod-AFR-AFR Integration Microservices'
+
+    - name: appName
+      type: string
+      default: 'xxxxxx' #'FEOnboardingApp'
+
+    - name: containerRegistry
+      type: string
+      default: 'microservicesacrafrdev.azurecr.io'
+
+    - name: imageRepository
+      type: string
+      default: 'assetverificationfe'
+      
+    #production agent pool
+    - name: BuildAgentPoolProd
+      type: string
+      default: 'AFR_Prod_Self_hosted_Pool'
+
+    - name: docker_build_arguments
+      type: object
+      default: |
+        --build-arg REACT_APP_API_BASE_URL="$(REACT_APP_API_BASE_URL)"
+        --build-arg REACT_APP_STORAGE_ACCOUNT_NAME="$(REACT_APP_STORAGE_ACCOUNT_NAME)"
+        --build-arg REACT_APP_STORAGE_CONTAINER_NAME="$(REACT_APP_STORAGE_CONTAINER_NAME)"
+        --build-arg REACT_APP_STORAGE_ACCESS_KEY="$(REACT_APP_STORAGE_ACCESS_KEY)"
+        --build-arg REACT_APP_SAS_URL="$(REACT_APP_SAS_URL)"
+        --build-arg REACT_APP_SAS_TOKEN="$(REACT_APP_SAS_TOKEN)"
+
+stages:        
+- stage: DEVBuild
+  displayName: DEV
+  condition: and( not(failed()), not(canceled()), eq(variables['Build.SourceBranch'], 'refs/heads/DEV'))
+  pool:
+   name: ${{parameters.BuildAgentPoolNonProd}} #'AFR_Non_Prod_Self_hosted_Pool'
+   demands:  agent.os -equals Linux
+  variables:
+   - group: '${{parameters.app}}'
+  jobs:
+  - job: build
+    displayName: Docker Build & Push
+
+    steps:
+      - task: Docker@2
+        displayName: Build
+        inputs:
+          command: build
+          repository: ${{parameters.imageRepository}}
+          dockerfile: '$(Build.SourcesDirectory)/${{parameters.dockerfile}}'
+          containerRegistry: ${{parameters.devDockerRegistryServiceConnection}}
+          # arguments: |
+          #   ${{parameters.docker_build_arguments}}
+          arguments: |
+            --build-arg REACT_APP_API_BASE_URL=="$(REACT_APP_API_BASE_URL=)"
+            --build-arg REACT_APP_STORAGE_ACCOUNT_NAME="$(REACT_APP_STORAGE_ACCOUNT_NAME)"
+            --build-arg REACT_APP_STORAGE_CONTAINER_NAME="$(REACT_APP_STORAGE_CONTAINER_NAME)"
+            --build-arg REACT_APP_STORAGE_ACCESS_KEY="$(REACT_APP_STORAGE_ACCESS_KEY)"
+            --build-arg REACT_APP_SAS_URL="$(REACT_APP_SAS_URL)"
+            --build-arg REACT_APP_SAS_TOKEN="$(REACT_APP_SAS_TOKEN)"
+          tags: |
+            latest
+            $(Build.BuildNumber)
+        
+      - task: Docker@2
+        displayName: Push
+        inputs:
+            command: push
+            repository: ${{parameters.imageRepository}}
+            containerRegistry: ${{parameters.devDockerRegistryServiceConnection}}
+            tags: |
+              latest
+              $(Build.BuildNumber)
+
+- stage: QABuild
+  displayName: QA
+  condition: and( not(failed()), not(canceled()), eq(variables['Build.SourceBranch'], 'refs/heads/QA'))
+  pool:
+   name: ${{parameters.BuildAgentPoolNonProd}} #'AFR_Non_Prod_Self_hosted_Pool'
+   demands:  agent.os -equals Linux
+  variables:
+   - group: '${{parameters.app}}QA'
+  jobs:
+  - job: build
+    displayName: Docker Build & Push
+
+    steps:
+      - task: Docker@2
+        displayName: Build
+        inputs:
+          command: build
+          repository: ${{parameters.imageRepository}}
+          dockerfile: '$(Build.SourcesDirectory)/${{parameters.dockerfile}}'
+          containerRegistry: ${{parameters.qaDockerRegistryServiceConnection}}
+          # arguments: |
+          #   ${{parameters.docker_build_arguments}}
+          arguments: |
+            --build-arg REACT_APP_API_BASE_URL=="$(REACT_APP_API_BASE_URL=)"
+            --build-arg REACT_APP_STORAGE_ACCOUNT_NAME="$(REACT_APP_STORAGE_ACCOUNT_NAME)"
+            --build-arg REACT_APP_STORAGE_CONTAINER_NAME="$(REACT_APP_STORAGE_CONTAINER_NAME)"
+            --build-arg REACT_APP_STORAGE_ACCESS_KEY="$(REACT_APP_STORAGE_ACCESS_KEY)"
+            --build-arg REACT_APP_SAS_URL="$(REACT_APP_SAS_URL)"
+            --build-arg REACT_APP_SAS_TOKEN="$(REACT_APP_SAS_TOKEN)"
+          tags: |
+            latest
+            $(Build.BuildNumber)
+        
+      - task: Docker@2
+        displayName: Push
+        inputs:
+            command: push
+            repository: ${{parameters.imageRepository}}
+            containerRegistry: ${{parameters.qaDockerRegistryServiceConnection}}
+            tags: |
+              latest
+              $(Build.BuildNumber)
